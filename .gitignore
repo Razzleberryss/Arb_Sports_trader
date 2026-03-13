@@ -205,3 +205,37 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# ============================================================
+# Sports Arb Bot - Sensitive / project-specific ignores
+# ============================================================
+
+# Environment & secrets
+.env
+.env.*
+*.env
+secrets/
+config/secrets.yaml
+config/secrets.json
+
+# API keys or credentials files
+credentials.json
+api_keys.py
+
+# Logs
+logs/
+*.log
+
+# Data / odds cache
+data/
+*.csv
+*.json.bak
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# OS junk
+.DS_Store
+Thumbs.db
