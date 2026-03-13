@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
-from datetime import datetime, timezone
 
 from sports_arb.arb_engine import (
     american_to_decimal,
@@ -17,13 +18,12 @@ from sports_arb.arb_engine import (
 )
 from sports_arb.models import BookmakerOdds
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 def _now() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 def _make_odds(

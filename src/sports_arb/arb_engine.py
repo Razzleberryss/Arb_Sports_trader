@@ -30,7 +30,7 @@ def american_to_decimal(american_odds: int) -> float:
     ----------
     american_odds:
         Positive → profit on a $100 wager (underdog).
-        Negative → amount needed to wager to win $100 (favourite).
+        Negative → amount needed to wager to win $100 (favorite).
 
     Returns
     -------

@@ -27,7 +27,7 @@ bets where the sum of the implied probabilities falls below 1.0 (i.e. below
 
 ```bash
 # 1. Clone and enter the repo
-git clone https://github.com/your-org/Arb_Sports_trader.git
+git clone https://github.com/Razzleberryss/Arb_Sports_trader.git
 cd Arb_Sports_trader
 
 # 2. Create a virtual environment (Python 3.11+)

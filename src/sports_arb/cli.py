@@ -13,13 +13,11 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import timezone
 
 from sports_arb.arb_engine import detect_arbitrage
-from sports_arb.config import ARB_THRESHOLD, DEFAULT_MIN_EDGE, SUPPORTED_SPORTS
+from sports_arb.config import DEFAULT_MIN_EDGE, SUPPORTED_SPORTS
 from sports_arb.models import ArbitrageOpportunity
 from sports_arb.odds_providers import PROVIDER_REGISTRY
-
 
 # ---------------------------------------------------------------------------
 # Formatting helpers

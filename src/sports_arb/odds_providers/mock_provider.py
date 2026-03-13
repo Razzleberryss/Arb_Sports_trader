@@ -14,11 +14,10 @@ purposes.  No real bookmaker odds are represented.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sports_arb.models import BookmakerOdds
 from sports_arb.odds_providers.base import BaseOddsProvider
-
 
 # ---------------------------------------------------------------------------
 # Standalone helper (also re-used by arb_engine; duplicated here to keep the
@@ -58,7 +57,7 @@ def american_to_decimal(american_odds: int) -> float:
 # ---------------------------------------------------------------------------
 
 def _now_utc() -> datetime:
-    return datetime.now(tz=timezone.utc)
+    return datetime.now(tz=UTC)
 
 
 # Each entry: (game_id, sport, league, home, away, offset_hours,

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -12,7 +12,6 @@ from sports_arb.models import (
     Game,
     Outcome,
 )
-
 
 # ---------------------------------------------------------------------------
 # Outcome
@@ -41,7 +40,7 @@ def test_outcome_draw() -> None:
 # ---------------------------------------------------------------------------
 
 def test_game_construction() -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     outcomes = [
         Outcome("home", 2.0, "BookA"),
         Outcome("away", 2.0, "BookB"),
@@ -63,7 +62,7 @@ def test_game_construction() -> None:
 
 
 def test_game_start_time_is_datetime() -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     game = Game(
         game_id="g2",
         sport="NFL",
@@ -82,7 +81,7 @@ def test_game_start_time_is_datetime() -> None:
 # ---------------------------------------------------------------------------
 
 def test_bookmaker_odds_construction() -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     record = BookmakerOdds(
         bookmaker="FanDuel",
         game_id="nba_123",
@@ -100,7 +99,7 @@ def test_bookmaker_odds_construction() -> None:
 
 
 def test_bookmaker_odds_default_outcomes_empty() -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     record = BookmakerOdds(
         bookmaker="DraftKings",
         game_id="nfl_456",
@@ -115,7 +114,7 @@ def test_bookmaker_odds_default_outcomes_empty() -> None:
 
 
 def test_bookmaker_odds_three_way_market() -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     record = BookmakerOdds(
         bookmaker="Caesars",
         game_id="epl_789",
@@ -136,7 +135,7 @@ def test_bookmaker_odds_three_way_market() -> None:
 # ---------------------------------------------------------------------------
 
 def _make_arb_opp() -> ArbitrageOpportunity:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     return ArbitrageOpportunity(
         game_id="arb_001",
         sport="NBA",
@@ -178,7 +177,7 @@ def test_arb_opportunity_stakes() -> None:
 
 def test_arb_opportunity_start_time_future() -> None:
     """Confirm start_time can be set to a future datetime."""
-    future = datetime.now(tz=timezone.utc) + timedelta(hours=3)
+    future = datetime.now(tz=UTC) + timedelta(hours=3)
     opp = ArbitrageOpportunity(
         game_id="future_001",
         sport="NFL",
@@ -196,4 +195,4 @@ def test_arb_opportunity_start_time_future() -> None:
         expected_profit=2.4,
         expected_profit_pct=2.4,
     )
-    assert opp.start_time > datetime.now(tz=timezone.utc)
+    assert opp.start_time > datetime.now(tz=UTC)
