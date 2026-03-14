@@ -45,10 +45,21 @@ from sports_arb.odds_providers import PROVIDER_REGISTRY
 
 
 def _get_logger(log_file: str, logger_name: str) -> logging.Logger:
-    """Return a logger that writes to *log_file* (creating directories as needed)."""
-    os.makedirs(os.path.dirname(log_file), exist_ok=True)
+    """Return a logger that writes to *log_file* (creating directories as needed).
 
-    logger = logging.getLogger(logger_name)
+    A unique logger is created per ``log_file`` path so that callers passing
+    different file paths always get independent loggers even when they share
+    the same conceptual ``logger_name``.
+    """
+    # Guard: only call makedirs when the log_file contains a directory component.
+    dirname = os.path.dirname(log_file)
+    if dirname:
+        os.makedirs(dirname, exist_ok=True)
+
+    # Incorporate the log_file into the logger name so that different file paths
+    # produce independent loggers rather than re-using the first handler.
+    unique_name = f"{logger_name}.{log_file}"
+    logger = logging.getLogger(unique_name)
     if not logger.handlers:
         logger.setLevel(logging.INFO)
         handler = logging.FileHandler(log_file, encoding="utf-8")
@@ -141,11 +152,19 @@ def _log_opportunities(
 
 
 def _fetch_all_odds_sync() -> list[BookmakerOdds]:
-    """Collect odds from all registered providers synchronously."""
+    """Collect odds from all registered providers synchronously.
+
+    Provider errors are caught and logged so that one failing provider does
+    not abort the entire scan cycle.
+    """
+    _err_logger = logging.getLogger("sports_arb.scanner")
     all_odds: list[BookmakerOdds] = []
-    for provider_cls in PROVIDER_REGISTRY.values():
-        provider = provider_cls()
-        all_odds.extend(provider.get_current_odds())
+    for name, provider_cls in PROVIDER_REGISTRY.items():
+        try:
+            provider = provider_cls()
+            all_odds.extend(provider.get_current_odds())
+        except Exception as exc:  # noqa: BLE001
+            _err_logger.warning("Provider %s failed in sync fetch: %s", name, exc)
     return all_odds
 
 
@@ -241,15 +260,23 @@ def start_pregame_loop(
 
 
 async def _fetch_all_odds_async() -> list[BookmakerOdds]:
-    """Collect odds from all registered providers concurrently."""
-    providers = [cls() for cls in PROVIDER_REGISTRY.values()]
+    """Collect odds from all registered providers concurrently.
+
+    Provider errors are logged individually so that one failing provider does
+    not prevent odds from being collected from the remaining providers.
+    """
+    _err_logger = logging.getLogger("sports_arb.scanner")
+    providers = list(PROVIDER_REGISTRY.items())
     results = await asyncio.gather(
-        *[p.async_get_current_odds() for p in providers],
+        *[cls().async_get_current_odds() for _, cls in providers],
         return_exceptions=True,
     )
     all_odds: list[BookmakerOdds] = []
-    for batch in results:
+    # asyncio.gather() preserves input order, so zip() correctly pairs each
+    # result with its originating (name, cls) tuple.
+    for (name, _), batch in zip(providers, results):
         if isinstance(batch, BaseException):
+            _err_logger.warning("Provider %s failed in async fetch: %s", name, batch)
             continue
         all_odds.extend(batch)
     return all_odds

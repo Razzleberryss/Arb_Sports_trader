@@ -23,7 +23,6 @@ import argparse
 import sys
 
 from sports_arb.config import (
-    DEFAULT_MIN_EDGE,
     LIVE_ALERT_THRESHOLD_PCT,
     LIVE_ARB_THRESHOLD,
     LIVE_INTERVAL_SECONDS,
@@ -32,60 +31,12 @@ from sports_arb.config import (
     PREGAME_BUFFER_MINUTES,
     PREGAME_INTERVAL_SECONDS,
     PREGAME_LOG_FILE,
-    SUPPORTED_SPORTS,
 )
-from sports_arb.models import ArbitrageOpportunity
 from sports_arb.odds_providers import PROVIDER_REGISTRY
 
 # ---------------------------------------------------------------------------
-# Formatting helpers
+# Helpers
 # ---------------------------------------------------------------------------
-
-_SEP = "─" * 80
-
-
-def _fmt_opportunity(opp: ArbitrageOpportunity, bankroll: float) -> str:
-    """Return a multi-line human-readable summary for one opportunity."""
-    lines: list[str] = []
-
-    lines.append(_SEP)
-    lines.append(
-        f"  [{opp.sport} | {opp.league}]  "
-        f"{opp.home_team}  vs  {opp.away_team}  "
-        f"({opp.market_type.upper()})"
-    )
-    lines.append(
-        f"  Game ID   : {opp.game_id}"
-    )
-    start_local = opp.start_time.astimezone(tz=None)
-    lines.append(
-        f"  Starts    : {start_local.strftime('%Y-%m-%d %H:%M %Z')}"
-    )
-    lines.append(
-        f"  Books     : {', '.join(opp.involved_books)}"
-    )
-    lines.append(
-        f"  IP Sum    : {opp.implied_prob_sum:.4f}  "
-        f"Edge: {opp.edge_pct:.2f}%"
-    )
-    lines.append(
-        f"  Profit    : ${opp.expected_profit:.2f}  "
-        f"({opp.expected_profit_pct:.2f}%)  on ${bankroll:.2f} bankroll"
-    )
-
-    # Outcome table
-    lines.append("")
-    header = f"    {'Outcome':<12} {'Book':<16} {'Dec. Odds':>10} {'Stake ($)':>10}"
-    lines.append(header)
-    lines.append("    " + "·" * (len(header) - 4))
-    for outcome, odds in opp.best_odds.items():
-        book = opp.best_odds_books.get(outcome, "—")
-        stake = opp.stakes.get(outcome, 0.0)
-        lines.append(
-            f"    {outcome:<12} {book:<16} {odds:>10.4f} {stake:>10.2f}"
-        )
-
-    return "\n".join(lines)
 
 
 def _list_providers() -> None:
@@ -106,8 +57,10 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="sports-arb",
         description=(
             "Sports betting arbitrage scanner (educational use only).\n\n"
-            "Scans configured odds providers, identifies cross-book arbitrage\n"
-            "opportunities, and prints a formatted summary table."
+            "Runs in one of three modes: 'pregame' (default) targets upcoming\n"
+            "games on a slow polling interval; 'live' targets in-progress games\n"
+            "on a fast async interval with a tighter threshold; 'both' runs both\n"
+            "scanners concurrently."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -123,30 +76,6 @@ def _build_parser() -> argparse.ArgumentParser:
             "live runs on a fast async interval targeting in-progress games; "
             "both runs pregame and live concurrently."
         ),
-    )
-    parser.add_argument(
-        "--min-edge",
-        type=float,
-        default=DEFAULT_MIN_EDGE * 100,
-        metavar="FLOAT",
-        help=(
-            "Minimum edge percentage to surface an opportunity "
-            f"(default: {DEFAULT_MIN_EDGE * 100:.1f})"
-        ),
-    )
-    parser.add_argument(
-        "--sport",
-        type=str,
-        default=None,
-        metavar="SPORT",
-        help=f"Filter by sport name (choices: {', '.join(SUPPORTED_SPORTS)})",
-    )
-    parser.add_argument(
-        "--book",
-        type=str,
-        default=None,
-        metavar="BOOK",
-        help="Only show opportunities that involve this bookmaker",
     )
     parser.add_argument(
         "--bankroll",
@@ -254,15 +183,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.mode == "live":
         import asyncio
 
-        asyncio.run(
-            start_live_loop(
-                bankroll=args.bankroll,
-                threshold=args.live_threshold,
-                interval_seconds=args.live_interval,
-                log_file=args.live_log,
-                alert_threshold_pct=args.live_alert_threshold,
+        try:
+            asyncio.run(
+                start_live_loop(
+                    bankroll=args.bankroll,
+                    threshold=args.live_threshold,
+                    interval_seconds=args.live_interval,
+                    log_file=args.live_log,
+                    alert_threshold_pct=args.live_alert_threshold,
+                )
             )
-        )
+        except KeyboardInterrupt:
+            print("\n[live] Scanner stopped.")
         return 0
 
     if args.mode == "both":

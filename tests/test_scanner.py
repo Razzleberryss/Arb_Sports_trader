@@ -10,10 +10,12 @@ These tests validate:
 
 from __future__ import annotations
 
+import importlib
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
+import sports_arb.config as config_mod
 from sports_arb.config import (
     LIVE_ARB_THRESHOLD,
     PREGAME_ARB_THRESHOLD,
@@ -147,6 +149,15 @@ class TestFilterLive:
 class TestModeThresholds:
     """Tests confirming pregame and live modes use different arb thresholds."""
 
+    @pytest.fixture(autouse=False)
+    def reloaded_config(self, monkeypatch: pytest.MonkeyPatch):
+        """Yield a freshly reloaded config module with no env overrides for threshold vars."""
+        monkeypatch.delenv("PREGAME_ARB_THRESHOLD", raising=False)
+        monkeypatch.delenv("LIVE_ARB_THRESHOLD", raising=False)
+        importlib.reload(config_mod)
+        yield config_mod
+        importlib.reload(config_mod)  # restore module state for other tests
+
     def test_pregame_threshold_less_strict(self) -> None:
         """Pre-game threshold is less strict (higher) than live threshold."""
         assert PREGAME_ARB_THRESHOLD > LIVE_ARB_THRESHOLD, (
@@ -154,13 +165,13 @@ class TestModeThresholds:
             f"> LIVE_ARB_THRESHOLD ({LIVE_ARB_THRESHOLD})"
         )
 
-    def test_pregame_threshold_value(self) -> None:
-        """Pre-game threshold defaults to 0.98 (2% edge)."""
-        assert PREGAME_ARB_THRESHOLD == pytest.approx(0.98)
+    def test_pregame_threshold_value(self, reloaded_config: object) -> None:
+        """Pre-game threshold defaults to 0.98 when no env override is set."""
+        assert config_mod.PREGAME_ARB_THRESHOLD == pytest.approx(0.98)
 
-    def test_live_threshold_value(self) -> None:
-        """Live threshold defaults to 0.96 (4% edge, tighter than pregame)."""
-        assert LIVE_ARB_THRESHOLD == pytest.approx(0.96)
+    def test_live_threshold_value(self, reloaded_config: object) -> None:
+        """Live threshold defaults to 0.96 when no env override is set."""
+        assert config_mod.LIVE_ARB_THRESHOLD == pytest.approx(0.96)
 
     def test_pregame_and_live_thresholds_differ(self) -> None:
         """The two thresholds must not be equal."""
