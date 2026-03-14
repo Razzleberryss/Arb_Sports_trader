@@ -89,6 +89,38 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="List available odds providers and exit",
     )
+    # --- data source flags ---
+    parser.add_argument(
+        "--use-mock",
+        action="store_true",
+        help=(
+            "Force the mock odds provider regardless of ODDS_API_KEY. "
+            "Useful for local development without burning API quota."
+        ),
+    )
+    parser.add_argument(
+        "--sport",
+        type=str,
+        default=None,
+        metavar="SPORT",
+        help=(
+            "Filter to a single sport. Accepts The Odds API sport keys "
+            "(e.g. 'basketball_nba') or short aliases "
+            "('nfl', 'nba', 'mls', 'mlb', 'nhl'). "
+            "Defaults to all configured sports."
+        ),
+    )
+    parser.add_argument(
+        "--books",
+        type=str,
+        default=None,
+        metavar="BOOKS",
+        help=(
+            "Comma-separated list of bookmaker keys to include "
+            "(e.g. 'draftkings,fanduel'). "
+            "Defaults to all configured bookmakers."
+        ),
+    )
     # --- mode-specific overrides ---
     parser.add_argument(
         "--pregame-interval",
@@ -166,6 +198,33 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # ------------------------------------------------------------------
+    # Apply data-source flags before importing the scanner so that the
+    # provider registry and config values are correct when scanner.py
+    # reads them.
+    # ------------------------------------------------------------------
+
+    # --use-mock: force the mock provider regardless of ODDS_API_KEY.
+    if args.use_mock:
+        from sports_arb.odds_providers import MockOddsProvider
+
+        PROVIDER_REGISTRY.clear()
+        PROVIDER_REGISTRY[MockOddsProvider.name] = MockOddsProvider
+
+    # --sport: restrict the provider to a single sport.
+    if args.sport:
+        import sports_arb.config as cfg
+        from sports_arb.odds_providers.the_odds_api import SPORT_ALIASES
+
+        sport_key = SPORT_ALIASES.get(args.sport.lower(), args.sport)
+        cfg.SPORTS = [sport_key]
+
+    # --books: restrict which bookmakers are queried.
+    if args.books:
+        import sports_arb.config as cfg
+
+        cfg.BOOKMAKERS = [b.strip() for b in args.books.split(",") if b.strip()]
+
+    # ------------------------------------------------------------------
     # Dispatch to scanner loops when a run mode is requested
     # ------------------------------------------------------------------
     from sports_arb.scanner import start_both, start_live_loop, start_pregame_loop
@@ -218,3 +277,4 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+

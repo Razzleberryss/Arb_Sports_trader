@@ -20,13 +20,27 @@ except ImportError:  # python-dotenv not installed – silently continue
     pass
 
 # ---------------------------------------------------------------------------
+# Odds API
+# ---------------------------------------------------------------------------
+
+#: API key for The Odds API (https://the-odds-api.com).  When absent, the mock
+#: provider is used as a fallback so the bot still runs in development.
+ODDS_API_KEY: str = os.getenv("ODDS_API_KEY", "")
+
+# ---------------------------------------------------------------------------
 # Bookmakers
 # ---------------------------------------------------------------------------
+
+#: The Odds API bookmaker keys used to filter results.  These are the
+#: ``key`` values returned by the ``/v4/sports`` endpoint, not display names.
+#: Default set covers the five major US sportsbooks.
 BOOKMAKERS: list[str] = [
-    "DraftKings",
-    "FanDuel",
-    "Caesars",
-    "Mock",
+    bk.strip()
+    for bk in os.getenv(
+        "BOOKMAKERS",
+        "draftkings,fanduel,betmgm,caesars_sportsbook,pointsbetus",
+    ).split(",")
+    if bk.strip()
 ]
 
 # ---------------------------------------------------------------------------
@@ -81,6 +95,28 @@ LIVE_ALERT_THRESHOLD_PCT: float = float(os.getenv("LIVE_ALERT_THRESHOLD_PCT", "2
 # ---------------------------------------------------------------------------
 # Sports & markets
 # ---------------------------------------------------------------------------
+
+#: The Odds API sport keys for the active sports.
+#: These are used by :class:`~sports_arb.odds_providers.the_odds_api.TheOddsApiProvider`.
+SPORTS: list[str] = [
+    s.strip()
+    for s in os.getenv(
+        "SPORTS",
+        "americanfootball_nfl,basketball_nba,soccer_usa_mls,baseball_mlb,icehockey_nhl",
+    ).split(",")
+    if s.strip()
+]
+
 SUPPORTED_SPORTS: list[str] = ["NBA", "NFL", "soccer"]
 
 SUPPORTED_MARKET_TYPES: list[str] = ["moneyline", "spreads"]
+
+# ---------------------------------------------------------------------------
+# Cache / rate limiting
+# ---------------------------------------------------------------------------
+
+#: Minimum seconds between API fetches per sport in pre-game mode.
+MIN_FETCH_INTERVAL_PREGAME: int = int(os.getenv("MIN_FETCH_INTERVAL_PREGAME", "300"))
+
+#: Minimum seconds between API fetches per sport in live mode.
+MIN_FETCH_INTERVAL_LIVE: int = int(os.getenv("MIN_FETCH_INTERVAL_LIVE", "20"))

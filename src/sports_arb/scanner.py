@@ -260,7 +260,13 @@ def start_pregame_loop(
 
 
 async def _fetch_all_odds_async() -> list[BookmakerOdds]:
-    """Collect odds from all registered providers concurrently.
+    """Collect live odds from all registered providers concurrently.
+
+    Each provider's :meth:`~sports_arb.odds_providers.base.BaseOddsProvider.async_get_live_odds`
+    is called so that providers with a dedicated live endpoint (e.g.
+    :class:`~sports_arb.odds_providers.the_odds_api.TheOddsApiProvider`) use
+    it instead of the pre-game endpoint.  Providers that don't override
+    ``get_live_odds`` fall back to ``get_current_odds`` automatically.
 
     Provider errors are logged individually so that one failing provider does
     not prevent odds from being collected from the remaining providers.
@@ -268,7 +274,7 @@ async def _fetch_all_odds_async() -> list[BookmakerOdds]:
     _err_logger = logging.getLogger("sports_arb.scanner")
     providers = list(PROVIDER_REGISTRY.items())
     results = await asyncio.gather(
-        *[cls().async_get_current_odds() for _, cls in providers],
+        *[cls().async_get_live_odds() for _, cls in providers],
         return_exceptions=True,
     )
     all_odds: list[BookmakerOdds] = []
