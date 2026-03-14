@@ -8,12 +8,30 @@ Covers:
 
 from __future__ import annotations
 
+import sys
 import time
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from sports_arb.models import BookmakerOdds
 from sports_arb.odds_providers.the_odds_api import TheOddsApiProvider, _american_to_decimal
+
+# ---------------------------------------------------------------------------
+# Module-level autouse fixture: reset the class-level cache before/after every
+# test in this file so tests don't bleed state into each other.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _reset_provider_cache():
+    """Clear TheOddsApiProvider class-level caches around each test."""
+    TheOddsApiProvider._pregame_cache.clear()
+    TheOddsApiProvider._live_cache.clear()
+    yield
+    TheOddsApiProvider._pregame_cache.clear()
+    TheOddsApiProvider._live_cache.clear()
 
 # ---------------------------------------------------------------------------
 # Sample The Odds API JSON response (single game, two bookmakers)
@@ -256,9 +274,9 @@ class TestCache:
             assert mock_client.get.call_count == 1
 
             # Expire the cache by backdating the stored timestamp.
-            provider._pregame_cache["basketball_nba"] = (
+            TheOddsApiProvider._pregame_cache["basketball_nba"] = (
                 time.monotonic() - 2,  # 2 seconds ago, past the 1-second TTL
-                provider._pregame_cache["basketball_nba"][1],
+                TheOddsApiProvider._pregame_cache["basketball_nba"][1],
             )
 
             # Second call – cache expired, API hit again.
@@ -322,29 +340,24 @@ class TestFallback:
     def test_mock_provider_used_when_no_api_key(self, monkeypatch):
         """PROVIDER_REGISTRY should contain only the mock provider when ODDS_API_KEY is unset."""
         monkeypatch.delenv("ODDS_API_KEY", raising=False)
+        # Remove the cached module so the fresh import uses the patched env.
+        # monkeypatch restores sys.modules automatically after the test.
+        monkeypatch.delitem(sys.modules, "sports_arb.odds_providers", raising=False)
 
-        # Re-import to pick up the patched environment.
-        import importlib
+        import sports_arb.odds_providers as fresh_pkg
 
-        import sports_arb.odds_providers as pkg
-
-        importlib.reload(pkg)
-
-        assert "mock" in pkg.PROVIDER_REGISTRY
-        assert "the_odds_api" not in pkg.PROVIDER_REGISTRY
+        assert "mock" in fresh_pkg.PROVIDER_REGISTRY
+        assert "the_odds_api" not in fresh_pkg.PROVIDER_REGISTRY
 
     def test_real_provider_registered_when_api_key_set(self, monkeypatch):
         """PROVIDER_REGISTRY should include the_odds_api when ODDS_API_KEY is set."""
         monkeypatch.setenv("ODDS_API_KEY", "fake-key-12345")
+        monkeypatch.delitem(sys.modules, "sports_arb.odds_providers", raising=False)
 
-        import importlib
+        import sports_arb.odds_providers as fresh_pkg
 
-        import sports_arb.odds_providers as pkg
-
-        importlib.reload(pkg)
-
-        assert "mock" in pkg.PROVIDER_REGISTRY
-        assert "the_odds_api" in pkg.PROVIDER_REGISTRY
+        assert "mock" in fresh_pkg.PROVIDER_REGISTRY
+        assert "the_odds_api" in fresh_pkg.PROVIDER_REGISTRY
 
     def test_mock_provider_still_works_independently(self):
         """MockOddsProvider must remain fully functional regardless of env vars."""

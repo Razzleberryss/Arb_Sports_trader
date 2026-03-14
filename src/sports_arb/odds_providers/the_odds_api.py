@@ -9,7 +9,7 @@ Live endpoint::
 
     GET https://api.the-odds-api.com/v4/sports/{sport}/odds
         ?apiKey=...&regions=us&markets=h2h&oddsFormat=american
-        &commenceTimeFrom=<ISO8601>&commenceTimeTo=<ISO8601 now>
+        &commenceTimeTo=<ISO8601 now>
 
 After every successful HTTP call the remaining API quota is written to the
 ``sports_arb.odds_providers.the_odds_api`` logger so operators can track
@@ -19,11 +19,17 @@ Responses are normalised into :class:`~sports_arb.models.BookmakerOdds`
 records (one per bookmaker × game × market).  American odds are converted
 to decimal odds before being stored.
 
-An **in-memory cache** prevents redundant API calls when the scanner loops
-faster than the configured minimum fetch intervals:
+A **class-level in-memory cache** (shared across all instances) prevents
+redundant API calls when the scanner loops faster than the configured minimum
+fetch intervals:
 
 * Pre-game mode  → ``min_fetch_interval_pregame`` seconds  (default 300)
 * Live mode      → ``min_fetch_interval_live``     seconds  (default 20)
+
+Because the cache is class-level, it survives across scan cycles even when the
+scanner creates a new provider instance on every cycle.  A :class:`threading.Lock`
+protects cache reads and writes so the provider is safe to call from multiple
+threads concurrently.
 
 DISCLAIMER: This module is for educational purposes only.  Output does not
 constitute financial advice and must not be used to place real wagers.
@@ -32,6 +38,7 @@ constitute financial advice and must not be used to place real wagers.
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from datetime import UTC, datetime
 
@@ -73,6 +80,11 @@ def _american_to_decimal(american_odds: float) -> float:
 class TheOddsApiProvider(BaseOddsProvider):
     """Fetches real odds from The Odds API and caches them per sport.
 
+    The cache is **class-level** so it is shared across all provider instances.
+    This ensures the TTL is honoured even when the scanner creates a fresh
+    instance on every scan cycle.  A :class:`threading.Lock` serialises cache
+    access so the provider is safe to call from multiple threads.
+
     Parameters
     ----------
     api_key:
@@ -93,6 +105,11 @@ class TheOddsApiProvider(BaseOddsProvider):
     """
 
     name: str = "the_odds_api"
+
+    # Class-level caches shared across all instances: sport_key → (timestamp, records)
+    _pregame_cache: dict[str, tuple[float, list[BookmakerOdds]]] = {}
+    _live_cache: dict[str, tuple[float, list[BookmakerOdds]]] = {}
+    _cache_lock: threading.Lock = threading.Lock()
 
     def __init__(
         self,
@@ -119,10 +136,6 @@ class TheOddsApiProvider(BaseOddsProvider):
             if min_fetch_interval_live is not None
             else cfg.MIN_FETCH_INTERVAL_LIVE
         )
-
-        # Cache: sport_key -> (fetch_timestamp, list[BookmakerOdds])
-        self._pregame_cache: dict[str, tuple[float, list[BookmakerOdds]]] = {}
-        self._live_cache: dict[str, tuple[float, list[BookmakerOdds]]] = {}
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -220,24 +233,27 @@ class TheOddsApiProvider(BaseOddsProvider):
         list[BookmakerOdds]
             Normalised odds records (may be from cache).
         """
-        cache = self._live_cache if live else self._pregame_cache
+        cache = TheOddsApiProvider._live_cache if live else TheOddsApiProvider._pregame_cache
         min_interval = (
             self._min_fetch_interval_live if live else self._min_fetch_interval_pregame
         )
 
-        # Return cached data if still fresh.
-        if sport_key in cache:
-            cached_at, cached_data = cache[sport_key]
-            if time.monotonic() - cached_at < min_interval:
-                _log.debug(
-                    "Cache hit for sport=%s live=%s (age=%.1fs < %ds)",
-                    sport_key,
-                    live,
-                    time.monotonic() - cached_at,
-                    min_interval,
-                )
-                return cached_data
+        # Check cache under lock (fast path – no I/O).
+        with TheOddsApiProvider._cache_lock:
+            if sport_key in cache:
+                cached_at, cached_data = cache[sport_key]
+                if time.monotonic() - cached_at < min_interval:
+                    _log.debug(
+                        "Cache hit for sport=%s live=%s (age=%.1fs < %ds)",
+                        sport_key,
+                        live,
+                        time.monotonic() - cached_at,
+                        min_interval,
+                    )
+                    return cached_data
 
+        # Cache miss or expired – fetch from API (outside the lock so other
+        # threads are not blocked during network I/O).
         url = f"{_BASE_URL}/{sport_key}/odds"
         params = self._build_params(live=live)
 
@@ -249,8 +265,9 @@ class TheOddsApiProvider(BaseOddsProvider):
         data: list[dict] = response.json()
         result = self._normalize(data, sport_key)
 
-        # Update cache with a monotonic timestamp for reliable TTL checks.
-        cache[sport_key] = (time.monotonic(), result)
+        # Write back to cache under lock.
+        with TheOddsApiProvider._cache_lock:
+            cache[sport_key] = (time.monotonic(), result)
         return result
 
     # ------------------------------------------------------------------
