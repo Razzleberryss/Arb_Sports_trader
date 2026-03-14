@@ -21,6 +21,9 @@ dev = [
     "pytest>=8.0.0",
     "ruff>=0.4.0",
 ]
+scheduler = [
+    "apscheduler>=3.10.0",
+]
 
 [project.scripts]
 sports-arb = "sports_arb.cli:main"
