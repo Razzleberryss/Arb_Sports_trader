@@ -70,12 +70,12 @@ def _decimal_to_american(decimal_odds: float) -> str:
         return str(int(round(american)))
 
 
-def _format_message(opp: ArbitrageOpportunity, emoji: str) -> str:
+def _format_message(opp: ArbitrageOpportunity, emoji: str, label: str) -> str:
     """Build the Telegram message text for *opp*."""
     now_str = datetime.now(tz=UTC).strftime("%-I:%M:%S %p UTC")
 
     lines: list[str] = [
-        f"{emoji} {'LIVE ARB DETECTED' if emoji == '⚡' else 'PREGAME ARB DETECTED'}",
+        f"{emoji} {label}",
         f"Game: {opp.home_team} vs {opp.away_team} ({opp.league})",
         f"Edge: {opp.edge_pct:.1f}%",
         f"Profit on $100: ${opp.expected_profit:.2f}",
@@ -103,7 +103,7 @@ async def send_arb_alert(opp: ArbitrageOpportunity) -> None:
     Failures (network errors, invalid token, missing credentials) are logged
     and swallowed so the scanner loop is never interrupted.
     """
-    await _send(opp, emoji="⚡")
+    await _send(opp, emoji="⚡", label="LIVE ARB DETECTED")
 
 
 async def send_pregame_alert(opp: ArbitrageOpportunity) -> None:
@@ -111,10 +111,10 @@ async def send_pregame_alert(opp: ArbitrageOpportunity) -> None:
 
     Failures are logged and swallowed so the scanner loop is never interrupted.
     """
-    await _send(opp, emoji="🔔")
+    await _send(opp, emoji="🔔", label="PREGAME ARB DETECTED")
 
 
-async def _send(opp: ArbitrageOpportunity, emoji: str) -> None:
+async def _send(opp: ArbitrageOpportunity, emoji: str, label: str) -> None:
     """Internal coroutine that builds and dispatches the Telegram message."""
     if not _telegram_available:
         logger.warning("python-telegram-bot is not installed; Telegram alerts are disabled.")
@@ -127,7 +127,7 @@ async def _send(opp: ArbitrageOpportunity, emoji: str) -> None:
         )
         return
 
-    text = _format_message(opp, emoji)
+    text = _format_message(opp, emoji, label)
     try:
         async with Bot(token=token) as bot:
             await bot.send_message(chat_id=chat_id, text=text)
@@ -145,15 +145,18 @@ async def _send(opp: ArbitrageOpportunity, emoji: str) -> None:
 def send_pregame_alert_sync(opp: ArbitrageOpportunity) -> None:
     """Synchronous wrapper around :func:`send_pregame_alert`.
 
-    Creates a temporary event loop if none is running (safe to call from
-    synchronous code such as the pregame scanner thread).
+    Uses :func:`asyncio.run` to create a fresh event loop (safe to call from
+    synchronous code such as the pregame scanner thread).  If an event loop is
+    already running (e.g. inside an async context) the alert is scheduled as a
+    fire-and-forget task instead.
     """
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Already inside an async context – schedule as a fire-and-forget task.
-            asyncio.ensure_future(send_pregame_alert(opp))
-        else:
-            loop.run_until_complete(send_pregame_alert(opp))
-    except Exception as exc:  # noqa: BLE001
-        logger.error("Unexpected error in send_pregame_alert_sync: %s", exc)
+        asyncio.get_running_loop()
+        # Already inside a running loop – schedule as a fire-and-forget task.
+        asyncio.ensure_future(send_pregame_alert(opp))
+    except RuntimeError:
+        # No running loop – create a new one via asyncio.run().
+        try:
+            asyncio.run(send_pregame_alert(opp))
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Unexpected error in send_pregame_alert_sync: %s", exc)

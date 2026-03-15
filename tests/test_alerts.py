@@ -85,47 +85,47 @@ class TestDecimalToAmerican:
 class TestFormatMessage:
     def test_live_message_contains_emoji(self) -> None:
         opp = _make_opportunity()
-        msg = _format_message(opp, emoji="⚡")
+        msg = _format_message(opp, emoji="⚡", label="LIVE ARB DETECTED")
         assert "⚡" in msg
         assert "LIVE ARB DETECTED" in msg
 
     def test_pregame_message_contains_emoji(self) -> None:
         opp = _make_opportunity()
-        msg = _format_message(opp, emoji="🔔")
+        msg = _format_message(opp, emoji="🔔", label="PREGAME ARB DETECTED")
         assert "🔔" in msg
         assert "PREGAME ARB DETECTED" in msg
 
     def test_message_contains_teams(self) -> None:
         opp = _make_opportunity()
-        msg = _format_message(opp, emoji="⚡")
+        msg = _format_message(opp, emoji="⚡", label="LIVE ARB DETECTED")
         assert "Lakers" in msg
         assert "Celtics" in msg
         assert "NBA" in msg
 
     def test_message_contains_edge(self) -> None:
         opp = _make_opportunity(edge_pct=3.2)
-        msg = _format_message(opp, emoji="⚡")
+        msg = _format_message(opp, emoji="⚡", label="LIVE ARB DETECTED")
         assert "3.2%" in msg
 
     def test_message_contains_profit(self) -> None:
         opp = _make_opportunity()
-        msg = _format_message(opp, emoji="⚡")
+        msg = _format_message(opp, emoji="⚡", label="LIVE ARB DETECTED")
         assert "$3.20" in msg
 
     def test_message_contains_stakes(self) -> None:
         opp = _make_opportunity()
-        msg = _format_message(opp, emoji="⚡")
+        msg = _format_message(opp, emoji="⚡", label="LIVE ARB DETECTED")
         assert "$32.26" in msg
         assert "$67.74" in msg
 
     def test_message_contains_implied_prob(self) -> None:
         opp = _make_opportunity()
-        msg = _format_message(opp, emoji="⚡")
+        msg = _format_message(opp, emoji="⚡", label="LIVE ARB DETECTED")
         assert "96.8%" in msg
 
     def test_message_contains_bookmakers(self) -> None:
         opp = _make_opportunity()
-        msg = _format_message(opp, emoji="⚡")
+        msg = _format_message(opp, emoji="⚡", label="LIVE ARB DETECTED")
         assert "DraftKings" in msg
         assert "FanDuel" in msg
 
@@ -271,7 +271,7 @@ class TestScannerIntegration:
         log_file = str(tmp_path / "test_pregame.log")
 
         with patch(
-            "sports_arb.alerts.telegram.send_pregame_alert_sync",
+            "sports_arb.scanner.send_pregame_alert_sync",
             side_effect=RuntimeError("simulated Telegram crash"),
         ):
             # Use a threshold that guarantees some mock opportunities are found
@@ -280,11 +280,10 @@ class TestScannerIntegration:
                 threshold=0.5,  # very loose – catches mock data arb opps
                 buffer_minutes=0,
                 log_file=log_file,
-                alert_threshold_pct=0.0,  # alert on every opp
+                telegram_threshold_pct=0.0,  # alert on every opp
             )
-        # The scan should still return results; the Telegram error was swallowed
-        # (send_pregame_alert_sync itself catches exceptions internally, but
-        #  even a hard raise here should not propagate through run_pregame_scan)
+        # The scan should still return results; the Telegram error is caught
+        # by the try/except in run_pregame_scan and does not propagate.
         assert isinstance(opps, list)
 
     @pytest.mark.asyncio
