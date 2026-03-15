@@ -41,6 +41,7 @@ from sports_arb.config import (
 )
 from sports_arb.models import ArbitrageOpportunity, BookmakerOdds
 from sports_arb.odds_providers import PROVIDER_REGISTRY
+from sports_arb.trade_executor import execute_arb
 
 # ---------------------------------------------------------------------------
 # Logging helpers
@@ -231,6 +232,12 @@ def run_pregame_scan(
                 _emit(opp, "pregame")
             except Exception:  # noqa: BLE001
                 pass
+        try:
+            execute_arb(opp)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("sports_arb.scanner").error(
+                "execute_arb error (pregame): %s", exc
+            )
     return opps
 
 
@@ -372,6 +379,12 @@ async def run_live_scan(
                 _emit(opp, "live")
             except Exception:  # noqa: BLE001
                 pass
+        try:
+            execute_arb(opp)
+        except Exception as exc:  # noqa: BLE001
+            logging.getLogger("sports_arb.scanner").error(
+                "execute_arb error (live): %s", exc
+            )
     return opps
 
 

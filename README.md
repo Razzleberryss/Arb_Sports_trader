@@ -20,8 +20,9 @@ bets where the sum of the implied probabilities falls below 1.0 (i.e. below
 6. [Telegram alerts](#telegram-alerts)
 7. [Web dashboard](#web-dashboard)
 8. [CLI reference](#cli-reference)
-9. [Running tests](#running-tests)
-10. [Legal disclaimer](#legal-disclaimer)
+9. [Paper trade executor](#paper-trade-executor-no-real-bets)
+10. [Running tests](#running-tests)
+11. [Legal disclaimer](#legal-disclaimer)
 
 ---
 
@@ -360,6 +361,59 @@ sports-arb --bankroll 500 --book FanDuel
 # List registered providers
 sports-arb --providers
 ```
+
+---
+
+## Paper trade executor (no real bets)
+
+The scanner ships with a **paper trade executor** that simulates order
+execution entirely in memory.  No real bets are placed and no network
+requests are sent to any bookmaker or exchange.
+
+### Enabling paper execution
+
+Add the following line to your `.env` file:
+
+```dotenv
+AUTO_TRADE_ENABLED=true
+```
+
+When the flag is absent or set to `false` (the default), the executor
+logs a skip message for every detected opportunity and returns without
+recording any position.
+
+### What happens when it is enabled
+
+For each detected arbitrage opportunity the executor:
+
+1. Builds a list of `PaperLeg` objects – one per outcome – using the
+   bookmaker names and decimal odds stored on the
+   `ArbitrageOpportunity`.
+2. Adds the legs to a module-level `PaperPositionBook` (in-memory only;
+   positions are lost when the scanner process exits).
+3. Logs a summary line followed by one line per leg:
+
+```
+Executed PAPER arb with 2 legs, stake=10.0. 2 paper legs open
+PAPER DraftKings game_nba_001 home BUY @ 3.1 x 10.0
+PAPER FanDuel    game_nba_001 away BUY @ 1.909 x 10.0
+```
+
+### Extending to real execution
+
+`trade_executor.py` is intentionally structured so a real executor can
+be dropped in later:
+
+- Replace `_size_from_opportunity` with Kelly-criterion or bankroll
+  sizing logic.
+- Replace the in-memory `PaperPositionBook` with an exchange-connected
+  order manager.
+- The `execute_arb(opp)` call site in `scanner.py` does not need to
+  change.
+
+> **⚠ Educational / testing use only.**  This executor does not talk to
+> Kalshi, Polymarket, or any other exchange.  It is provided solely for
+> learning and back-testing purposes.
 
 ---
 
