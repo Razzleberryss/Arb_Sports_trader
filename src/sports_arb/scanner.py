@@ -25,8 +25,11 @@ import os
 import time
 from datetime import UTC, datetime, timedelta
 
+from sports_arb.alerts.telegram import send_arb_alert, send_pregame_alert_sync
 from sports_arb.arb_engine import detect_arbitrage
 from sports_arb.config import (
+    ALERT_THRESHOLD_LIVE,
+    ALERT_THRESHOLD_PREGAME,
     LIVE_ALERT_THRESHOLD_PCT,
     LIVE_ARB_THRESHOLD,
     LIVE_INTERVAL_SECONDS,
@@ -178,6 +181,7 @@ def run_pregame_scan(
     threshold: float = PREGAME_ARB_THRESHOLD,
     buffer_minutes: int = PREGAME_BUFFER_MINUTES,
     log_file: str = PREGAME_LOG_FILE,
+    alert_threshold_pct: float = ALERT_THRESHOLD_PREGAME,
 ) -> list[ArbitrageOpportunity]:
     """Execute one pre-game scan cycle and log results.
 
@@ -192,6 +196,8 @@ def run_pregame_scan(
         Exclude games starting within this many minutes.
     log_file:
         Path to the log file for pre-game opportunities.
+    alert_threshold_pct:
+        Edge % above which a Telegram alert is sent (default 3 %).
 
     Returns
     -------
@@ -205,6 +211,9 @@ def run_pregame_scan(
     opps = detect_arbitrage(pregame_odds, threshold=threshold, bankroll=bankroll)
 
     _log_opportunities(opps, logger, mode="pregame")
+    for opp in opps:
+        if opp.edge_pct >= alert_threshold_pct:
+            send_pregame_alert_sync(opp)
     return opps
 
 
@@ -214,6 +223,7 @@ def start_pregame_loop(
     buffer_minutes: int = PREGAME_BUFFER_MINUTES,
     interval_seconds: int = PREGAME_INTERVAL_SECONDS,
     log_file: str = PREGAME_LOG_FILE,
+    alert_threshold_pct: float = ALERT_THRESHOLD_PREGAME,
 ) -> None:
     """Run the pre-game scanner on a repeating interval (blocking).
 
@@ -231,6 +241,8 @@ def start_pregame_loop(
         Seconds between scan cycles.
     log_file:
         Path to the pre-game log file.
+    alert_threshold_pct:
+        Edge % above which a Telegram alert is sent (default 3 %).
     """
     print(
         f"[pregame] Starting pre-game scanner "
@@ -244,6 +256,7 @@ def start_pregame_loop(
                 threshold=threshold,
                 buffer_minutes=buffer_minutes,
                 log_file=log_file,
+                alert_threshold_pct=alert_threshold_pct,
             )
             print(
                 f"[pregame] {datetime.now(tz=UTC).strftime('%H:%M:%S')} – "
@@ -293,6 +306,7 @@ async def run_live_scan(
     threshold: float = LIVE_ARB_THRESHOLD,
     log_file: str = LIVE_LOG_FILE,
     alert_threshold_pct: float = LIVE_ALERT_THRESHOLD_PCT,
+    telegram_threshold_pct: float = ALERT_THRESHOLD_LIVE,
 ) -> list[ArbitrageOpportunity]:
     """Execute one live scan cycle asynchronously and log results.
 
@@ -306,6 +320,8 @@ async def run_live_scan(
         Path to the log file for live opportunities.
     alert_threshold_pct:
         Edge % above which ⚡ LIVE ARB is printed to the console.
+    telegram_threshold_pct:
+        Edge % above which a Telegram alert is sent (default 2 %).
 
     Returns
     -------
@@ -319,6 +335,9 @@ async def run_live_scan(
     opps = detect_arbitrage(live_odds, threshold=threshold, bankroll=bankroll)
 
     _log_opportunities(opps, logger, mode="live", alert_threshold_pct=alert_threshold_pct)
+    for opp in opps:
+        if opp.edge_pct >= telegram_threshold_pct:
+            await send_arb_alert(opp)
     return opps
 
 
@@ -328,6 +347,7 @@ async def start_live_loop(
     interval_seconds: int = LIVE_INTERVAL_SECONDS,
     log_file: str = LIVE_LOG_FILE,
     alert_threshold_pct: float = LIVE_ALERT_THRESHOLD_PCT,
+    telegram_threshold_pct: float = ALERT_THRESHOLD_LIVE,
 ) -> None:
     """Run the live scanner on a repeating async interval.
 
@@ -343,6 +363,8 @@ async def start_live_loop(
         Path to the live log file.
     alert_threshold_pct:
         Edge % above which ⚡ LIVE ARB is printed to the console.
+    telegram_threshold_pct:
+        Edge % above which a Telegram alert is sent (default 2 %).
     """
     print(
         f"[live] Starting live scanner "
@@ -355,6 +377,7 @@ async def start_live_loop(
                 threshold=threshold,
                 log_file=log_file,
                 alert_threshold_pct=alert_threshold_pct,
+                telegram_threshold_pct=telegram_threshold_pct,
             )
             print(
                 f"[live] {datetime.now(tz=UTC).strftime('%H:%M:%S')} – "
@@ -376,10 +399,12 @@ async def _run_both(
     pregame_interval: int = PREGAME_INTERVAL_SECONDS,
     pregame_buffer: int = PREGAME_BUFFER_MINUTES,
     pregame_log: str = PREGAME_LOG_FILE,
+    pregame_alert_pct: float = ALERT_THRESHOLD_PREGAME,
     live_threshold: float = LIVE_ARB_THRESHOLD,
     live_interval: int = LIVE_INTERVAL_SECONDS,
     live_log: str = LIVE_LOG_FILE,
     live_alert_pct: float = LIVE_ALERT_THRESHOLD_PCT,
+    live_telegram_pct: float = ALERT_THRESHOLD_LIVE,
 ) -> None:
     """Run pregame and live scanners concurrently via asyncio tasks."""
 
@@ -393,6 +418,7 @@ async def _run_both(
                     pregame_threshold,
                     pregame_buffer,
                     pregame_log,
+                    pregame_alert_pct,
                 )
                 print(
                     f"[pregame] {datetime.now(tz=UTC).strftime('%H:%M:%S')} – "
@@ -412,6 +438,7 @@ async def _run_both(
                 interval_seconds=live_interval,
                 log_file=live_log,
                 alert_threshold_pct=live_alert_pct,
+                telegram_threshold_pct=live_telegram_pct,
             )
         )
 
@@ -422,10 +449,12 @@ def start_both(
     pregame_interval: int = PREGAME_INTERVAL_SECONDS,
     pregame_buffer: int = PREGAME_BUFFER_MINUTES,
     pregame_log: str = PREGAME_LOG_FILE,
+    pregame_alert_pct: float = ALERT_THRESHOLD_PREGAME,
     live_threshold: float = LIVE_ARB_THRESHOLD,
     live_interval: int = LIVE_INTERVAL_SECONDS,
     live_log: str = LIVE_LOG_FILE,
     live_alert_pct: float = LIVE_ALERT_THRESHOLD_PCT,
+    live_telegram_pct: float = ALERT_THRESHOLD_LIVE,
 ) -> None:
     """Run both scanners concurrently (blocking entry point for CLI use)."""
     try:
@@ -436,10 +465,12 @@ def start_both(
                 pregame_interval=pregame_interval,
                 pregame_buffer=pregame_buffer,
                 pregame_log=pregame_log,
+                pregame_alert_pct=pregame_alert_pct,
                 live_threshold=live_threshold,
                 live_interval=live_interval,
                 live_log=live_log,
                 live_alert_pct=live_alert_pct,
+                live_telegram_pct=live_telegram_pct,
             )
         )
     except KeyboardInterrupt:

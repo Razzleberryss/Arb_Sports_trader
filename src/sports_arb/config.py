@@ -93,6 +93,16 @@ LIVE_LOG_FILE: str = os.getenv("LIVE_LOG_FILE", "logs/live_opps.log")
 LIVE_ALERT_THRESHOLD_PCT: float = float(os.getenv("LIVE_ALERT_THRESHOLD_PCT", "2.0"))
 
 # ---------------------------------------------------------------------------
+# Telegram alert thresholds
+# ---------------------------------------------------------------------------
+
+#: Minimum edge % for a live opportunity to trigger a Telegram alert.
+ALERT_THRESHOLD_LIVE: float = float(os.getenv("ALERT_THRESHOLD_LIVE", "2.0"))
+
+#: Minimum edge % for a pre-game opportunity to trigger a Telegram alert.
+ALERT_THRESHOLD_PREGAME: float = float(os.getenv("ALERT_THRESHOLD_PREGAME", "3.0"))
+
+# ---------------------------------------------------------------------------
 # Sports & markets
 # ---------------------------------------------------------------------------
 
