@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from dataclasses import dataclass, field
 
 from sports_arb.models import ArbitrageOpportunity
@@ -59,17 +60,28 @@ class PaperPositionBook:
     A module-level singleton (``book``) is provided below so that all
     calls to :func:`execute_arb` accumulate legs in the same book
     throughout the scanner's lifetime.
+
+    ``add_legs`` and ``summary`` are protected by an internal
+    :class:`threading.Lock` so they are safe to call from concurrent
+    pregame (sync thread) and live (async event loop) scan cycles.
     """
 
     legs: list[PaperLeg] = field(default_factory=list)
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
 
     def add_legs(self, legs: list[PaperLeg]) -> None:
-        """Append *legs* to the position book."""
-        self.legs.extend(legs)
+        """Append *legs* to the position book (thread-safe)."""
+        with self._lock:
+            self.legs.extend(legs)
 
     def summary(self) -> str:
-        """Return a human-readable count of open paper legs."""
-        return f"{len(self.legs)} paper legs open"
+        """Return a human-readable count of open paper legs (thread-safe)."""
+        with self._lock:
+            n = len(self.legs)
+        noun = "leg" if n == 1 else "legs"
+        return f"{n} paper {noun} open"
 
 
 #: Module-level paper position book shared across all execute_arb calls.
@@ -116,7 +128,7 @@ def execute_arb(opp: ArbitrageOpportunity) -> None:
     auto_trade_enabled = enabled_raw in {"1", "true", "yes"}
 
     if not auto_trade_enabled:
-        logger.info(
+        logger.debug(
             "AUTO_TRADE_ENABLED is false; skipping paper execution. "
             "Would have traded opportunity: %s",
             opp,

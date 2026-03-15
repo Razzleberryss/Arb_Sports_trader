@@ -63,8 +63,14 @@ def test_paper_leg_fields() -> None:
 
 
 def test_paper_leg_sell_side() -> None:
-    leg = PaperLeg(venue="BookB", market_id="game_002", outcome="away",
-                   side="SELL", price=1.909, size=5.0)
+    leg = PaperLeg(
+        venue="BookB",
+        market_id="game_002",
+        outcome="away",
+        side="SELL",
+        price=1.909,
+        size=5.0,
+    )
     assert leg.side == "SELL"
 
 
@@ -100,7 +106,7 @@ def test_position_book_add_legs_accumulates() -> None:
 def test_position_book_summary_plural() -> None:
     b = PaperPositionBook()
     b.add_legs([PaperLeg("BookA", "g1", "home", "BUY", 3.1, 10.0)])
-    assert b.summary() == "1 paper legs open"
+    assert b.summary() == "1 paper leg open"
 
 
 # ---------------------------------------------------------------------------
@@ -129,7 +135,7 @@ def test_execute_arb_disabled_logs_skip(
     monkeypatch.setenv("AUTO_TRADE_ENABLED", "false")
 
     opp = _make_arb_opp()
-    with caplog.at_level(logging.INFO, logger="sports_arb.trade_executor"):
+    with caplog.at_level(logging.DEBUG, logger="sports_arb.trade_executor"):
         execute_arb(opp)
 
     assert len(fresh_book.legs) == 0
