@@ -211,6 +211,13 @@ def run_pregame_scan(
     opps = detect_arbitrage(pregame_odds, threshold=threshold, bankroll=bankroll)
 
     _log_opportunities(opps, logger, mode="pregame")
+
+    # Import dashboard emitter once before the loop; None if dashboard not running.
+    try:
+        from sports_arb.dashboard.app import emit_opportunity as _emit  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        _emit = None  # type: ignore[assignment]
+
     for opp in opps:
         if opp.edge_pct >= telegram_threshold_pct:
             try:
@@ -219,12 +226,11 @@ def run_pregame_scan(
                 logging.getLogger("sports_arb.scanner").error(
                     "Telegram pregame alert error: %s", exc
                 )
-        try:
-            from sports_arb.dashboard.app import emit_opportunity  # noqa: PLC0415
-
-            emit_opportunity(opp, "pregame")
-        except Exception:  # noqa: BLE001
-            pass
+        if _emit is not None:
+            try:
+                _emit(opp, "pregame")
+            except Exception:  # noqa: BLE001
+                pass
     return opps
 
 
@@ -346,6 +352,13 @@ async def run_live_scan(
     opps = detect_arbitrage(live_odds, threshold=threshold, bankroll=bankroll)
 
     _log_opportunities(opps, logger, mode="live", alert_threshold_pct=alert_threshold_pct)
+
+    # Import dashboard emitter once before the loop; None if dashboard not running.
+    try:
+        from sports_arb.dashboard.app import emit_opportunity as _emit  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        _emit = None  # type: ignore[assignment]
+
     for opp in opps:
         if opp.edge_pct >= telegram_threshold_pct:
             try:
@@ -354,12 +367,11 @@ async def run_live_scan(
                 logging.getLogger("sports_arb.scanner").error(
                     "Telegram live alert error: %s", exc
                 )
-        try:
-            from sports_arb.dashboard.app import emit_opportunity  # noqa: PLC0415
-
-            emit_opportunity(opp, "live")
-        except Exception:  # noqa: BLE001
-            pass
+        if _emit is not None:
+            try:
+                _emit(opp, "live")
+            except Exception:  # noqa: BLE001
+                pass
     return opps
 
 

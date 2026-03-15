@@ -13,6 +13,8 @@ Educational use only – no real betting logic.
 from __future__ import annotations
 
 import logging
+import os
+import threading
 from collections import deque
 from datetime import UTC, datetime
 from typing import Any
@@ -38,12 +40,15 @@ _stats: dict[str, Any] = {
     "scanner_running": False,
 }
 
+#: Lock protecting _stats and _opportunity_cache from concurrent access.
+_state_lock = threading.Lock()
+
 # ---------------------------------------------------------------------------
 # Flask / SocketIO setup
 # ---------------------------------------------------------------------------
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
-app.config["SECRET_KEY"] = "arb-dashboard-secret"
+app.config["SECRET_KEY"] = os.environ.get("DASHBOARD_SECRET_KEY", "arb-dashboard-dev-only")
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 
@@ -88,7 +93,10 @@ def _opp_to_dict(opp: Any, opp_type: str) -> dict[str, Any]:
 
 
 def _reset_stats_if_new_day() -> None:
-    """Reset daily counters when the UTC date has rolled over."""
+    """Reset daily counters when the UTC date has rolled over.
+
+    Must be called while *_state_lock* is held.
+    """
     today = datetime.now(tz=UTC).date().isoformat()
     if _stats["date"] != today:
         _stats["date"] = today
@@ -112,20 +120,19 @@ def emit_opportunity(opp: Any, opp_type: str) -> None:
     opp_type:
         ``"live"`` or ``"pregame"``.
     """
-    _reset_stats_if_new_day()
-
     data = _opp_to_dict(opp, opp_type)
 
-    # Update cache (deque enforces maxlen=50 automatically).
-    _opportunity_cache.appendleft(data)
+    with _state_lock:
+        _reset_stats_if_new_day()
+        # Update cache (deque enforces maxlen=50 automatically).
+        _opportunity_cache.appendleft(data)
+        # Update daily stats.
+        _stats["total_today"] += 1
+        _stats["edge_sum"] += opp.edge_pct
+        if opp.edge_pct > _stats["best_edge"]:
+            _stats["best_edge"] = opp.edge_pct
 
-    # Update daily stats.
-    _stats["total_today"] += 1
-    _stats["edge_sum"] += opp.edge_pct
-    if opp.edge_pct > _stats["best_edge"]:
-        _stats["best_edge"] = opp.edge_pct
-
-    # Emit via SocketIO (no-op if no clients are connected).
+    # Emit via SocketIO outside the lock (no-op if no clients are connected).
     try:
         socketio.emit("new_opportunity", data)
     except Exception as exc:  # noqa: BLE001
@@ -134,7 +141,8 @@ def emit_opportunity(opp: Any, opp_type: str) -> None:
 
 def set_scanner_running(running: bool) -> None:
     """Update the scanner-running status flag shown in the dashboard."""
-    _stats["scanner_running"] = running
+    with _state_lock:
+        _stats["scanner_running"] = running
 
 
 # ---------------------------------------------------------------------------
@@ -154,23 +162,26 @@ def api_opportunities():
 
     Returns at most 50 entries (newest first).
     """
-    return jsonify(list(_opportunity_cache))
+    with _state_lock:
+        data = list(_opportunity_cache)
+    return jsonify(data)
 
 
 @app.route("/api/stats")
 def api_stats():
     """Return daily scanner statistics."""
-    _reset_stats_if_new_day()
-    total = _stats["total_today"]
-    avg_edge = round(_stats["edge_sum"] / total, 2) if total > 0 else 0.0
-    return jsonify(
-        {
-            "total_today": total,
-            "avg_edge_pct": avg_edge,
-            "best_edge_today": round(_stats["best_edge"], 2),
-            "scanner_status": "running" if _stats["scanner_running"] else "stopped",
-        }
-    )
+    with _state_lock:
+        _reset_stats_if_new_day()
+        total = _stats["total_today"]
+        avg_edge = round(_stats["edge_sum"] / total, 2) if total > 0 else 0.0
+        return jsonify(
+            {
+                "total_today": total,
+                "avg_edge_pct": avg_edge,
+                "best_edge_today": round(_stats["best_edge"], 2),
+                "scanner_status": "running" if _stats["scanner_running"] else "stopped",
+            }
+        )
 
 
 # ---------------------------------------------------------------------------

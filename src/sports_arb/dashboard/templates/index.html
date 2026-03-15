@@ -120,7 +120,8 @@
         const stats = await statsRes.json();
         updateStats(stats);
         if (opps.length) {
-          opps.forEach(opp => prependRow(opp, /* animate= */ false));
+          // API returns newest-first; reverse so prependRow leaves newest at top.
+          [...opps].reverse().forEach(opp => prependRow(opp, /* animate= */ false));
         }
       } catch (err) {
         console.error('Failed to load initial data:', err);
