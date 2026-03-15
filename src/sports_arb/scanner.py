@@ -219,6 +219,12 @@ def run_pregame_scan(
                 logging.getLogger("sports_arb.scanner").error(
                     "Telegram pregame alert error: %s", exc
                 )
+        try:
+            from sports_arb.dashboard.app import emit_opportunity  # noqa: PLC0415
+
+            emit_opportunity(opp, "pregame")
+        except Exception:  # noqa: BLE001
+            pass
     return opps
 
 
@@ -348,6 +354,12 @@ async def run_live_scan(
                 logging.getLogger("sports_arb.scanner").error(
                     "Telegram live alert error: %s", exc
                 )
+        try:
+            from sports_arb.dashboard.app import emit_opportunity  # noqa: PLC0415
+
+            emit_opportunity(opp, "live")
+        except Exception:  # noqa: BLE001
+            pass
     return opps
 
 

@@ -4,5 +4,7 @@ python-dotenv>=1.0.0
 beautifulsoup4>=4.12.0   # used by HTML-scraping odds providers
 apscheduler>=3.10.0      # used by scripts/schedule.py for auto-scheduling
 python-telegram-bot>=20.0  # Telegram bot alerts
+flask>=3.0               # real-time web dashboard
+flask-socketio>=5.3      # SocketIO events for the dashboard
 pytest>=8.0.0
 ruff>=0.4.0

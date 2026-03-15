@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Arb Sports Trader – Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <!-- ── Header ─────────────────────────────────────────────────── -->
+  <header class="site-header">
+    <h1 class="site-title">⚡ Arb Sports Trader</h1>
+    <span id="scanner-badge" class="badge badge-stopped">● Stopped</span>
+  </header>
+
+  <!-- ── Stats bar ───────────────────────────────────────────────── -->
+  <section class="stats-bar">
+    <div class="stat-card">
+      <span class="stat-label">Opps Today</span>
+      <span class="stat-value" id="stat-total">–</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Avg Edge %</span>
+      <span class="stat-value" id="stat-avg-edge">–</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Best Edge Today</span>
+      <span class="stat-value" id="stat-best-edge">–</span>
+    </div>
+  </section>
+
+  <!-- ── Opportunities table ─────────────────────────────────────── -->
+  <main class="main-content">
+    <h2 class="section-title">Live Opportunities</h2>
+    <div class="table-wrapper">
+      <table id="opps-table">
+        <thead>
+          <tr>
+            <th>Type</th>
+            <th>Game</th>
+            <th>League</th>
+            <th>Edge %</th>
+            <th>Profit on $100</th>
+            <th>Book 1 (Home)</th>
+            <th>Book 2 (Away)</th>
+            <th>Detected At</th>
+          </tr>
+        </thead>
+        <tbody id="opps-body">
+          <tr id="empty-row">
+            <td colspan="8" class="empty-msg">No opportunities detected yet.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- ── Footer ──────────────────────────────────────────────────── -->
+  <footer class="site-footer">
+    ⚠️ Educational use only. No real wagers are placed by this dashboard.
+  </footer>
+
+  <!-- ── Scripts ─────────────────────────────────────────────────── -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"
+          crossorigin="anonymous"></script>
+  <script>
+    // ── Helpers ──────────────────────────────────────────────────────
+    function escHtml(str) {
+      if (str == null) return '–';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function fmtOdds(val) {
+      return (val != null && val !== '') ? Number(val).toFixed(2) : '–';
+    }
+
+    // ── Build a <tr> from an opportunity object ───────────────────────
+    function buildRow(opp) {
+      const typeLower = (opp.type || '').toLowerCase();
+      const typeCls   = typeLower === 'live' ? 'badge-live' : 'badge-pregame';
+      const rowCls    = typeLower === 'live' ? 'row-live'   : 'row-pregame';
+
+      const book1 = opp.book1_name
+        ? `${escHtml(opp.book1_name)}: ${fmtOdds(opp.book1_odds)}`
+        : fmtOdds(opp.book1_odds);
+      const book2 = opp.book2_name
+        ? `${escHtml(opp.book2_name)}: ${fmtOdds(opp.book2_odds)}`
+        : fmtOdds(opp.book2_odds);
+
+      const tr = document.createElement('tr');
+      tr.className = `${rowCls} flash-new`;
+      tr.innerHTML = `
+        <td><span class="badge ${typeCls}">${escHtml(opp.type)}</span></td>
+        <td>${escHtml(opp.game)}</td>
+        <td>${escHtml(opp.league)}</td>
+        <td class="num">${opp.edge_pct != null ? Number(opp.edge_pct).toFixed(2) + '%' : '–'}</td>
+        <td class="num">$${opp.profit_on_100 != null ? Number(opp.profit_on_100).toFixed(2) : '–'}</td>
+        <td>${book1}</td>
+        <td>${book2}</td>
+        <td class="ts">${escHtml(opp.detected_at)}</td>
+      `;
+      // Remove flash class after animation completes (~800 ms)
+      setTimeout(() => tr.classList.remove('flash-new'), 900);
+      return tr;
+    }
+
+    // ── Load initial data from REST endpoint ─────────────────────────
+    async function loadInitial() {
+      try {
+        const [oppsRes, statsRes] = await Promise.all([
+          fetch('/api/opportunities'),
+          fetch('/api/stats'),
+        ]);
+        const opps  = await oppsRes.json();
+        const stats = await statsRes.json();
+        updateStats(stats);
+        if (opps.length) {
+          opps.forEach(opp => prependRow(opp, /* animate= */ false));
+        }
+      } catch (err) {
+        console.error('Failed to load initial data:', err);
+      }
+    }
+
+    // ── Stats bar update ──────────────────────────────────────────────
+    function updateStats(stats) {
+      document.getElementById('stat-total').textContent =
+        stats.total_today ?? '–';
+      document.getElementById('stat-avg-edge').textContent =
+        stats.avg_edge_pct != null ? stats.avg_edge_pct.toFixed(2) + '%' : '–';
+      document.getElementById('stat-best-edge').textContent =
+        stats.best_edge_today != null ? stats.best_edge_today.toFixed(2) + '%' : '–';
+
+      const badge = document.getElementById('scanner-badge');
+      if (stats.scanner_status === 'running') {
+        badge.textContent = '● Running';
+        badge.className = 'badge badge-running';
+      } else {
+        badge.textContent = '● Stopped';
+        badge.className = 'badge badge-stopped';
+      }
+    }
+
+    // ── Prepend a row to the table ────────────────────────────────────
+    function prependRow(opp, animate) {
+      const tbody = document.getElementById('opps-body');
+      // Remove "no opportunities" placeholder if present
+      const empty = document.getElementById('empty-row');
+      if (empty) empty.remove();
+
+      const tr = buildRow(opp);
+      if (!animate) tr.classList.remove('flash-new');
+      tbody.insertBefore(tr, tbody.firstChild);
+
+      // Keep table at most 50 rows
+      while (tbody.rows.length > 50) {
+        tbody.deleteRow(tbody.rows.length - 1);
+      }
+    }
+
+    // ── SocketIO real-time updates ────────────────────────────────────
+    const socket = io();
+
+    socket.on('connect', () => {
+      console.log('Dashboard connected to SocketIO server');
+      // Refresh stats on (re)connect so status badge is accurate
+      fetch('/api/stats').then(r => r.json()).then(updateStats).catch(() => {});
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Dashboard disconnected from SocketIO server');
+    });
+
+    socket.on('new_opportunity', (opp) => {
+      prependRow(opp, /* animate= */ true);
+      // Refresh stats counters
+      fetch('/api/stats').then(r => r.json()).then(updateStats).catch(() => {});
+    });
+
+    // ── Boot ──────────────────────────────────────────────────────────
+    loadInitial();
+  </script>
+</body>
+</html>
