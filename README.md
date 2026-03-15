@@ -17,9 +17,10 @@ bets where the sum of the implied probabilities falls below 1.0 (i.e. below
 3. [Worked example](#worked-example)
 4. [Architecture overview](#architecture-overview)
 5. [Plugging in real odds data](#plugging-in-real-odds-data)
-6. [CLI reference](#cli-reference)
-7. [Running tests](#running-tests)
-8. [Legal disclaimer](#legal-disclaimer)
+6. [Telegram alerts](#telegram-alerts)
+7. [CLI reference](#cli-reference)
+8. [Running tests](#running-tests)
+9. [Legal disclaimer](#legal-disclaimer)
 
 ---
 
@@ -208,6 +209,72 @@ The package reads `.env` automatically via `python-dotenv` when present.
 
 > Scraping bookmaker websites may violate their terms of service.  Always
 > use official APIs where available.
+
+---
+
+## Telegram alerts
+
+The scanner can push real-time notifications to your phone the instant a live
+or pre-game arbitrage opportunity is detected.
+
+### Step 1 – Create a Telegram bot
+
+1. Open Telegram and search for **@BotFather**.
+2. Send `/newbot` and follow the prompts to choose a name and username.
+3. BotFather will reply with your **bot token** (looks like `123456:ABC-DEF…`).
+   Keep it secret.
+
+### Step 2 – Find your chat ID
+
+1. Start a conversation with your new bot by sending it any message (e.g. `/start`).
+2. Open this URL in a browser (replace `<TOKEN>` with your actual token):
+   ```
+   https://api.telegram.org/bot<TOKEN>/getUpdates
+   ```
+3. Look for `"chat":{"id":…}` in the JSON response – that number is your
+   **chat ID**.  For a private chat it is a positive integer; for a group it
+   starts with a minus sign.
+
+### Step 3 – Configure the scanner
+
+Add the following lines to your `.env` file (copy `.env.example` as a starting
+point):
+
+```dotenv
+TELEGRAM_BOT_TOKEN=123456:ABC-DEF…
+TELEGRAM_CHAT_ID=987654321
+```
+
+Optionally override the edge thresholds that trigger an alert:
+
+```dotenv
+# Send a live alert when edge ≥ 2 % (default)
+ALERT_THRESHOLD_LIVE=2.0
+
+# Send a pre-game alert when edge ≥ 3 % (default)
+ALERT_THRESHOLD_PREGAME=3.0
+```
+
+### Example alert message
+
+```
+⚡ LIVE ARB DETECTED
+Game: Lakers vs Celtics (NBA)
+Edge: 3.2%
+Profit on $100: $3.20
+DraftKings → Home ML: +210 → Stake $32.26
+FanDuel → Away ML: -110 → Stake $67.74
+Implied prob sum: 96.8%
+Detected: 8:42:03 PM UTC
+```
+
+Pre-game alerts use 🔔 instead of ⚡.
+
+### Fault tolerance
+
+If the Telegram API is unreachable, the token is invalid, or either
+`TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` is missing, the scanner logs a
+warning and continues normally – **alerts never crash the scanner**.
 
 ---
 
