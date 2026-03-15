@@ -18,9 +18,10 @@ bets where the sum of the implied probabilities falls below 1.0 (i.e. below
 4. [Architecture overview](#architecture-overview)
 5. [Plugging in real odds data](#plugging-in-real-odds-data)
 6. [Telegram alerts](#telegram-alerts)
-7. [CLI reference](#cli-reference)
-8. [Running tests](#running-tests)
-9. [Legal disclaimer](#legal-disclaimer)
+7. [Web dashboard](#web-dashboard)
+8. [CLI reference](#cli-reference)
+9. [Running tests](#running-tests)
+10. [Legal disclaimer](#legal-disclaimer)
 
 ---
 
@@ -275,6 +276,60 @@ Pre-game alerts use 🔔 instead of ⚡.
 If the Telegram API is unreachable, the token is invalid, or either
 `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` is missing, the scanner logs a
 warning and continues normally – **alerts never crash the scanner**.
+
+---
+
+## Web dashboard
+
+The scanner ships with a real-time web dashboard powered by **Flask** and
+**Flask-SocketIO**.  It displays live and pre-game arbitrage opportunities
+as they are detected, updates in real-time via WebSocket, and shows daily
+statistics.
+
+> **⚠ Educational use only.** The dashboard is a monitoring tool only.
+> No betting logic is included.
+
+### Starting the dashboard
+
+```bash
+# Ensure flask and flask-socketio are installed
+pip install -r requirements.txt
+
+# Start the dashboard server (port 5000)
+python -m sports_arb.dashboard.app
+```
+
+Open your browser at **http://localhost:5000**.
+
+### How it works
+
+1. The **scanner** (`scanner.py`) calls `emit_opportunity(opp, type)` after
+   each Telegram alert fires.  This is non-blocking – if the dashboard is not
+   running the scanner continues normally.
+2. The dashboard server caches the last 50 opportunities in memory and
+   broadcasts each new one to all connected browsers via a `new_opportunity`
+   SocketIO event.
+3. The browser receives the event and animates a new row into the table
+   without a page reload.
+
+### Dashboard REST endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /` | Single-page dashboard HTML |
+| `GET /api/opportunities` | Latest ≤ 50 opportunities as JSON (newest first) |
+| `GET /api/stats` | Daily totals: total opps, avg edge %, best edge, scanner status |
+
+### Dashboard features
+
+- **Dark theme** (`#0d1117` background, `#161b22` cards)
+- Live scanner **status badge** (green = running, red = stopped)
+- **Stats bar**: total opps today, avg edge %, best edge today
+- **Opportunities table**: Type badge (LIVE amber / PREGAME blue), Game,
+  League, Edge %, Profit on $100, Book 1 home odds, Book 2 away odds,
+  Detected At
+- **Real-time updates**: new rows flash green briefly when they arrive
+- **Mobile responsive**
 
 ---
 
