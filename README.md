@@ -320,12 +320,13 @@ Open your browser at **http://localhost:5000**.
 | `GET /` | Single-page dashboard HTML |
 | `GET /api/opportunities` | Latest ≤ 50 opportunities as JSON (newest first) |
 | `GET /api/stats` | Daily totals: total opps, avg edge %, best edge, scanner status |
+| `GET /api/paper_stats` | Paper trading PnL: open/closed legs, realized and unrealized PnL |
 
 ### Dashboard features
 
 - **Dark theme** (`#0d1117` background, `#161b22` cards)
 - Live scanner **status badge** (green = running, red = stopped)
-- **Stats bar**: total opps today, avg edge %, best edge today
+- **Stats bar**: total opps today, avg edge %, best edge today, Paper PnL, Closed Legs
 - **Opportunities table**: Type badge (LIVE amber / PREGAME blue), Game,
   League, Edge %, Profit on $100, Book 1 home odds, Book 2 away odds,
   Detected At
@@ -391,13 +392,28 @@ For each detected arbitrage opportunity the executor:
    `ArbitrageOpportunity`.
 2. Adds the legs to a module-level `PaperPositionBook` (in-memory only;
    positions are lost when the scanner process exits).
-3. Logs a summary line followed by one line per leg:
+3. Immediately closes the arb via `close_arb`, recording the opportunity's
+   `expected_profit` as **realized PnL** and marking every leg as closed.
+4. Logs a summary line followed by one line per leg:
 
 ```
 Executed PAPER arb with 2 legs, stake=10.0. 2 paper legs open
 PAPER DraftKings game_nba_001 home BUY @ 3.1 x 10.0
 PAPER FanDuel    game_nba_001 away BUY @ 1.909 x 10.0
 ```
+
+### Paper PnL on the dashboard
+
+The dashboard shows a running **Paper PnL** total and **Closed Legs** count
+in the stats bar at the top of the page.  These values are fetched from
+the `/api/paper_stats` endpoint and automatically refreshed every 5 seconds:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/paper_stats` | JSON: `open_legs`, `closed_legs`, `realized_pnl`, `unrealized_pnl` |
+
+> Numbers reflect the in-memory state of the current scanner process only.
+> Restarting the scanner resets all paper PnL counters.
 
 ### Extending to real execution
 

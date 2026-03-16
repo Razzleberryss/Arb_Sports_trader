@@ -22,6 +22,8 @@ from typing import Any
 from flask import Flask, jsonify, render_template
 from flask_socketio import SocketIO
 
+from sports_arb.trade_executor import book as paper_book
+
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -182,6 +184,12 @@ def api_stats():
                 "scanner_status": "running" if _stats["scanner_running"] else "stopped",
             }
         )
+
+
+@app.route("/api/paper_stats")
+def api_paper_stats():
+    """Return JSON summary of paper trading stats (PnL, open/closed legs)."""
+    return jsonify(paper_book.stats())
 
 
 # ---------------------------------------------------------------------------

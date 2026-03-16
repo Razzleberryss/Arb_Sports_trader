@@ -51,6 +51,8 @@ class PaperLeg:
     side: str        # "BUY" or "SELL"
     price: float     # decimal odds at time of paper execution
     size: float      # notional stake in the paper account
+    pnl: float = 0.0
+    closed: bool = False
 
 
 @dataclass
@@ -67,6 +69,8 @@ class PaperPositionBook:
     """
 
     legs: list[PaperLeg] = field(default_factory=list)
+    realized_pnl: float = 0.0
+    unrealized_pnl: float = 0.0
     _lock: threading.Lock = field(
         default_factory=threading.Lock, init=False, repr=False, compare=False
     )
@@ -75,6 +79,35 @@ class PaperPositionBook:
         """Append *legs* to the position book (thread-safe)."""
         with self._lock:
             self.legs.extend(legs)
+
+    def close_arb(self, legs: list[PaperLeg], profit: float) -> None:
+        """Mark the given legs as closed and add profit to realized_pnl.
+
+        Each leg's ``pnl`` is set to ``profit / len(legs)`` (split equally).
+        ``profit`` is added to :attr:`realized_pnl`.
+
+        This is thread-safe.
+        """
+        if not legs:
+            return
+        per_leg = profit / len(legs)
+        with self._lock:
+            for leg in legs:
+                leg.closed = True
+                leg.pnl = per_leg
+            self.realized_pnl += profit
+
+    def stats(self) -> dict:
+        """Return a summary dict with open/closed legs and PnL."""
+        with self._lock:
+            open_legs = sum(1 for leg in self.legs if not leg.closed)
+            closed_legs = sum(1 for leg in self.legs if leg.closed)
+            return {
+                "open_legs": open_legs,
+                "closed_legs": closed_legs,
+                "realized_pnl": self.realized_pnl,
+                "unrealized_pnl": self.unrealized_pnl,
+            }
 
     def summary(self) -> str:
         """Return a human-readable count of open paper legs (thread-safe)."""
@@ -149,6 +182,7 @@ def execute_arb(opp: ArbitrageOpportunity) -> None:
     ]
 
     book.add_legs(legs)
+    book.close_arb(legs, profit=opp.expected_profit)
 
     logger.info(
         "Executed PAPER arb with %d legs, stake=%s. %s",
