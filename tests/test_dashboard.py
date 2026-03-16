@@ -261,3 +261,37 @@ class TestIndexPage:
         resp = client.get("/")
         assert resp.status_code == 200
         assert b"Arb Sports Trader" in resp.data
+
+
+# ---------------------------------------------------------------------------
+# /api/paper_stats
+# ---------------------------------------------------------------------------
+
+
+class TestApiPaperStats:
+    """Tests for GET /api/paper_stats."""
+
+    def test_returns_200(self, client) -> None:
+        resp = client.get("/api/paper_stats")
+        assert resp.status_code == 200
+
+    def test_initial_structure(self, client) -> None:
+        resp = client.get("/api/paper_stats")
+        data = resp.get_json()
+        assert "open_legs" in data
+        assert "closed_legs" in data
+        assert "realized_pnl" in data
+        assert "unrealized_pnl" in data
+
+    def test_reflects_paper_book_state(self, client) -> None:
+        """Verify the endpoint reflects live paper_book stats."""
+        from sports_arb.trade_executor import book as paper_book
+
+        # Stats should be consistent (may be non-zero if other tests ran,
+        # but structure must always be present and numeric).
+        resp = client.get("/api/paper_stats")
+        data = resp.get_json()
+        expected = paper_book.stats()
+        assert data["realized_pnl"] == pytest.approx(expected["realized_pnl"])
+        assert data["open_legs"] == expected["open_legs"]
+        assert data["closed_legs"] == expected["closed_legs"]

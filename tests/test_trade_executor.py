@@ -251,3 +251,138 @@ def test_execute_arb_enabled_price_matches_best_odds(
     prices = {leg.outcome: leg.price for leg in fresh_book.legs}
     assert prices["home"] == pytest.approx(opp.best_odds["home"])
     assert prices["away"] == pytest.approx(opp.best_odds["away"])
+
+
+# ---------------------------------------------------------------------------
+# PaperLeg – new pnl / closed fields
+# ---------------------------------------------------------------------------
+
+
+def test_paper_leg_defaults_pnl_and_closed() -> None:
+    leg = PaperLeg("BookA", "g1", "home", "BUY", 3.1, 10.0)
+    assert leg.pnl == pytest.approx(0.0)
+    assert leg.closed is False
+
+
+# ---------------------------------------------------------------------------
+# PaperPositionBook – close_arb
+# ---------------------------------------------------------------------------
+
+
+def test_close_arb_marks_legs_closed() -> None:
+    b = PaperPositionBook()
+    legs = [
+        PaperLeg("BookA", "g1", "home", "BUY", 3.1, 10.0),
+        PaperLeg("BookB", "g1", "away", "BUY", 1.909, 10.0),
+    ]
+    b.add_legs(legs)
+    b.close_arb(legs, profit=20.0)
+    assert all(leg.closed for leg in legs)
+
+
+def test_close_arb_splits_pnl_equally() -> None:
+    b = PaperPositionBook()
+    legs = [
+        PaperLeg("BookA", "g1", "home", "BUY", 3.1, 10.0),
+        PaperLeg("BookB", "g1", "away", "BUY", 1.909, 10.0),
+    ]
+    b.add_legs(legs)
+    b.close_arb(legs, profit=20.0)
+    for leg in legs:
+        assert leg.pnl == pytest.approx(10.0)
+
+
+def test_close_arb_updates_realized_pnl() -> None:
+    b = PaperPositionBook()
+    legs = [
+        PaperLeg("BookA", "g1", "home", "BUY", 3.1, 10.0),
+        PaperLeg("BookB", "g1", "away", "BUY", 1.909, 10.0),
+    ]
+    b.add_legs(legs)
+    b.close_arb(legs, profit=18.15)
+    assert b.realized_pnl == pytest.approx(18.15)
+
+
+def test_close_arb_accumulates_realized_pnl() -> None:
+    b = PaperPositionBook()
+    legs1 = [PaperLeg("BookA", "g1", "home", "BUY", 3.1, 10.0)]
+    legs2 = [PaperLeg("BookB", "g2", "away", "BUY", 1.909, 10.0)]
+    b.add_legs(legs1)
+    b.add_legs(legs2)
+    b.close_arb(legs1, profit=10.0)
+    b.close_arb(legs2, profit=5.0)
+    assert b.realized_pnl == pytest.approx(15.0)
+
+
+def test_close_arb_empty_legs_is_noop() -> None:
+    b = PaperPositionBook()
+    b.close_arb([], profit=10.0)
+    assert b.realized_pnl == pytest.approx(0.0)
+
+
+# ---------------------------------------------------------------------------
+# PaperPositionBook – stats
+# ---------------------------------------------------------------------------
+
+
+def test_stats_empty_book() -> None:
+    b = PaperPositionBook()
+    s = b.stats()
+    assert s["open_legs"] == 0
+    assert s["closed_legs"] == 0
+    assert s["realized_pnl"] == pytest.approx(0.0)
+    assert s["unrealized_pnl"] == pytest.approx(0.0)
+
+
+def test_stats_open_and_closed_counts() -> None:
+    b = PaperPositionBook()
+    legs = [
+        PaperLeg("BookA", "g1", "home", "BUY", 3.1, 10.0),
+        PaperLeg("BookB", "g1", "away", "BUY", 1.909, 10.0),
+    ]
+    b.add_legs(legs)
+    # Close only the first leg
+    b.close_arb([legs[0]], profit=5.0)
+    s = b.stats()
+    assert s["open_legs"] == 1
+    assert s["closed_legs"] == 1
+
+
+def test_stats_realized_pnl_after_close() -> None:
+    b = PaperPositionBook()
+    legs = [PaperLeg("BookA", "g1", "home", "BUY", 3.1, 10.0)]
+    b.add_legs(legs)
+    b.close_arb(legs, profit=18.15)
+    assert b.stats()["realized_pnl"] == pytest.approx(18.15)
+
+
+# ---------------------------------------------------------------------------
+# execute_arb – PnL tracking when enabled
+# ---------------------------------------------------------------------------
+
+
+def test_execute_arb_closes_legs_after_execution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """All legs must be closed immediately after execute_arb."""
+    import sports_arb.trade_executor as te
+
+    fresh_book = PaperPositionBook()
+    monkeypatch.setattr(te, "book", fresh_book)
+    monkeypatch.setenv("AUTO_TRADE_ENABLED", "true")
+
+    execute_arb(_make_arb_opp())
+
+    assert all(leg.closed for leg in fresh_book.legs)
+
+
+def test_execute_arb_records_realized_pnl(monkeypatch: pytest.MonkeyPatch) -> None:
+    """execute_arb must add opp.expected_profit to realized_pnl."""
+    import sports_arb.trade_executor as te
+
+    fresh_book = PaperPositionBook()
+    monkeypatch.setattr(te, "book", fresh_book)
+    monkeypatch.setenv("AUTO_TRADE_ENABLED", "true")
+
+    opp = _make_arb_opp()
+    execute_arb(opp)
+
+    assert fresh_book.realized_pnl == pytest.approx(opp.expected_profit)

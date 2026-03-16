@@ -28,6 +28,14 @@
       <span class="stat-label">Best Edge Today</span>
       <span class="stat-value" id="stat-best-edge">–</span>
     </div>
+    <div class="stat-card">
+      <span class="stat-label">Paper PnL</span>
+      <span class="stat-value" id="paper-pnl">–</span>
+    </div>
+    <div class="stat-card">
+      <span class="stat-label">Closed Legs</span>
+      <span class="stat-value" id="paper-closed">–</span>
+    </div>
   </section>
 
   <!-- ── Opportunities table ─────────────────────────────────────── -->
@@ -127,7 +135,6 @@
         console.error('Failed to load initial data:', err);
       }
     }
-
     // ── Stats bar update ──────────────────────────────────────────────
     function updateStats(stats) {
       document.getElementById('stat-total').textContent =
@@ -183,8 +190,26 @@
       fetch('/api/stats').then(r => r.json()).then(updateStats).catch(() => {});
     });
 
+    // ── Paper PnL update ─────────────────────────────────────────────
+    async function refreshPaperStats() {
+      try {
+        const resp = await fetch('/api/paper_stats');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        document.getElementById('paper-pnl').textContent =
+          '$' + Number(data.realized_pnl).toFixed(2);
+        document.getElementById('paper-closed').textContent =
+          data.closed_legs;
+      } catch (e) {
+        console.error('Failed to refresh paper stats', e);
+      }
+    }
+
+    const _paperStatsInterval = setInterval(refreshPaperStats, 5000);
+
     // ── Boot ──────────────────────────────────────────────────────────
     loadInitial();
+    refreshPaperStats();
   </script>
 </body>
 </html>
